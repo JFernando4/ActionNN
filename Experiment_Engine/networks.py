@@ -103,15 +103,24 @@ class GatedActionNeuralNetwork(nn.Module):
         h1_dims = check_attribute(self.config, 'h1_dims', 1, data_type=int)  # neurons in hidden layer 1
         h2_dims = check_attribute(self.config, 'h2_dims', 1, data_type=int)  # neurons in hidden layer 2
         self.num_actions = check_attribute(self.config, 'num_actions', 1, data_type=int)
+        self.gate_function = check_attribute(self.config, 'gate_function', 'tanh', data_type=str)   # mask gate function
 
         self.fc1 = nn.Linear(input_dims, h1_dims, bias=True)
         self.fc2 = nn.Linear(h1_dims, h2_dims, bias=True)
         self.fc3 = nn.Linear(h2_dims, 1, bias=False)
+        if self.gate_function == 'sigmoid':
+            self.gf = torch.sigmoid
+        elif self.gate_function == 'tanh':
+            self.gf = torch.tanh
+        elif self.gate_function == 'noisy_relu':
+            self.gf = lambda x: torch.relu(x + torch.empty(x.shape).normal_(mean=0, std=1))
+        else:
+            raise ValueError("Choose one of the following gate functions: sigmoid, tanh")
 
         self.action_gates = nn.Parameter(torch.randn((self.num_actions, h2_dims)), requires_grad=True)
         self.action_gates_bias = nn.Parameter(torch.randn(h2_dims), requires_grad=True)
 
-        self.action_indices = torch.arange(start=0, end=3, dtype=torch.int64)
+        self.action_indices = torch.arange(start=0, end=self.num_actions, dtype=torch.int64)
 
     def forward(self, x, a, return_activations=False, full=False):
         x = to_variable(x)
@@ -121,7 +130,7 @@ class GatedActionNeuralNetwork(nn.Module):
         x2 = F.relu(z2)             # Layer 2: x2 = gate2(z2)
         if not full:
             assert a is not None
-            g = torch.sigmoid(self.action_gates[a.flatten()] + self.action_gates_bias)
+            g = self.gf(self.action_gates[a.flatten()] + self.action_gates_bias)
             x2 = x2 * g
             x3 = self.fc3(x2)  # Output Layer: x3 = W3^T x2
             if not return_activations:
@@ -131,9 +140,60 @@ class GatedActionNeuralNetwork(nn.Module):
         else:
             action_values = None
             for i in range(self.num_actions):
-                g = torch.sigmoid(self.action_gates[i] + self.action_gates_bias)
+                if self.gate_function == 'noisy_relu':
+                    g = torch.relu(self.action_gates[i] + self.action_gates_bias)
+                else:
+                    g = self.gf(self.action_gates[i] + self.action_gates_bias)
                 temp_x2 = x2 * g
                 x3 = self.fc3(temp_x2)
+                if action_values is None:
+                    action_values = x3
+                else:
+                    action_values = torch.cat((action_values, x3), dim=1)
+            return action_values
+
+
+class BatchNormActionNeuralNetwork(nn.Module):
+
+    def __init__(self, config):
+        super(BatchNormActionNeuralNetwork, self).__init__()
+        self.config = config
+        # format: check_attribute( config_class, attribute_name, default_value, data_type)  # description (optional)
+        input_dims = check_attribute(self.config, 'input_dims', 1, data_type=int)
+        h1_dims = check_attribute(self.config, 'h1_dims', 1, data_type=int)  # neurons in hidden layer 1
+        h2_dims = check_attribute(self.config, 'h2_dims', 1, data_type=int)  # neurons in hidden layer 2
+        self.num_actions = check_attribute(self.config, 'num_actions', 1, data_type=int)
+
+        self.fc1 = nn.Linear(input_dims, h1_dims, bias=True)
+        self.fc2 = nn.Linear(h1_dims, h2_dims, bias=True)
+        self.bn2 = nn.BatchNorm1d(h2_dims, affine=False)
+        self.fc3 = nn.Linear(h2_dims, 1, bias=False)
+
+        self.action_scales = nn.Parameter(torch.randn((self.num_actions, h2_dims)), requires_grad=True)
+        self.action_shifts = nn.Parameter(torch.randn(self.num_actions, h2_dims), requires_grad=True)
+
+    def forward(self, x, a, return_activations=False, full=False):
+        x = to_variable(x)
+        z1 = self.fc1(x)            # Layer 1: z1 = W1^T x + b1
+        x1 = F.relu(z1)             # Layer 1: x1 = gate1(z1)
+        z2 = self.fc2(x1)           # Layer 2: z2 = W2^T x1 + b2
+        if not full:
+            assert a is not None
+            centered_z2 = self.bn2(z2)
+            affine_z2 = centered_z2 * self.action_scales[a] + self.action_shifts[a]
+            x2 = F.relu(affine_z2)
+            x3 = self.fc3(x2)  # Output Layer: x3 = W3^T x2
+            if not return_activations:
+                return x3
+            else:
+                return x1, x2, x3, g
+        else:
+            action_values = None
+            for i in range(self.num_actions):
+                centered_z2 = self.bn2(z2)
+                affine_z2 = centered_z2 * self.action_scales[i] + self.action_shifts[i]
+                x2 = F.relu(affine_z2)
+                x3 = self.fc3(x2)
                 if action_values is None:
                     action_values = x3
                 else:
