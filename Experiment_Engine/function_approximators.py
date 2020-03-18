@@ -1,7 +1,8 @@
 import numpy as np
 import torch
 
-from Experiment_Engine.networks import TwoLayerFullyConnected, ActionNeuralNetwork, weight_init, GatedActionNeuralNetwork
+from Experiment_Engine.networks import TwoLayerFullyConnected, ActionNeuralNetwork, weight_init, \
+    GatedActionNeuralNetwork, BatchNormActionNeuralNetwork
 from Experiment_Engine.util import *
 
 
@@ -190,6 +191,7 @@ class ActionDQN(NeuralNetworkFunctionApproximation):
             self.target_net = GatedActionNeuralNetwork(config)
         self.net.apply(weight_init)
         self.target_net.apply(weight_init)
+        self.target_net.eval()
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
     def compute_return(self, reward, state, termination):
@@ -203,10 +205,12 @@ class ActionDQN(NeuralNetworkFunctionApproximation):
     def choose_action(self, state):
         p = np.random.rand()
         if p > self.epsilon:
+            self.net.eval()
             with torch.no_grad():
                 # it is extremely unlikely (prob = 0) for there to be two actions with exactly the same action value
                 state = state.reshape([1, self.state_dims])
                 optim_action = self.net.forward(state, a=None, full=True).flatten().argmax().numpy()
+            self.net.train()
             return np.int64(optim_action)
         else:
             return np.random.randint(self.num_actions)
@@ -229,3 +233,60 @@ class ActionDQN(NeuralNetworkFunctionApproximation):
         #     print("Step: {0},\t Loss: {1}".format(self.config.current_step, loss))
         self.save_summary(loss.detach().numpy())
         self.update_target_network()
+        self.target_net.eval()
+
+
+class BatchNormActionDQN(NeuralNetworkFunctionApproximation):
+
+    def __init__(self, config, summary=None):
+        super(BatchNormActionDQN, self).__init__(config, summary)
+
+        # policy network
+        self.net = BatchNormActionNeuralNetwork(config)
+        self.target_net = BatchNormActionNeuralNetwork(config)
+
+        self.net.apply(weight_init)
+        self.target_net.apply(weight_init)
+        self.target_net.eval()
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
+
+    def compute_return(self, reward, state, termination):
+        # Computes the Qlearning return
+        with torch.no_grad():
+            av_function = torch.max(self.target_net.forward(state, a=None, full=True), dim=1)[0]  # [0] = values, [1] = indices
+            next_step_bool = torch.from_numpy((1 - np.int64(termination))).float()
+            qlearning_return = torch.from_numpy(reward).float() + next_step_bool * self.gamma * av_function
+        return qlearning_return
+
+    def choose_action(self, state):
+        p = np.random.rand()
+        if p > self.epsilon:
+            self.net.eval()
+            with torch.no_grad():
+                # it is extremely unlikely (prob = 0) for there to be two actions with exactly the same action value
+                state = state.reshape([1, self.state_dims])
+                optim_action = self.net.forward(state, a=None, full=True).flatten().argmax().numpy()
+            self.net.train()
+            return np.int64(optim_action)
+        else:
+            return np.random.randint(self.num_actions)
+
+    def update(self, state, action, reward, next_state, next_action, termination):
+        self.replay_buffer.store_transition(transition=(state, action, reward, next_state, next_action, termination))
+
+        if self.replay_buffer.length < self.batch_size:
+            self.save_summary(0)
+            return
+
+        state, action, reward, next_state, next_action, termination = self.replay_buffer.sample(self.batch_size)
+        qlearning_return = self.compute_return(reward, next_state, termination)
+        self.optimizer.zero_grad()
+        prediction = torch.squeeze(self.net(state, action))
+        loss = (qlearning_return - prediction).pow(2).mean()
+        loss.backward()
+        self.optimizer.step()
+        # if self.config.current_step % 1000 == 0:
+        #     print("Step: {0},\t Loss: {1}".format(self.config.current_step, loss))
+        self.save_summary(loss.detach().numpy())
+        self.update_target_network()
+        self.target_net.eval()
