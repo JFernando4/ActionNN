@@ -30,6 +30,7 @@ class Experiment:
                                                 choices=['mountain_car', 'catcher', 'puddle_world'])
         self.ppa = check_attribute(exp_parameters, 'ppa', 0.1)
         self.gated = check_attribute(exp_parameters, 'gated', False)
+        self.gate_function = check_attribute(exp_parameters, 'gate_function', 'tanh')
         self.verbose = experiment_parameters.verbose
 
         self.config = Config()
@@ -54,6 +55,7 @@ class Experiment:
         self.config.ppa = self.ppa
         self.config.h1_dims = 32
         self.config.h2_dims = 256
+        self.config.gate_function = self.gate_function
         # DQN parameters
         self.config.buffer_size = self.buffer_size
         self.config.tnet_update_freq = self.tnet_update_Freq
@@ -112,6 +114,8 @@ if __name__ == '__main__':
     parser.add_argument('-ppa', action='store', default=0.1, type=np.float64)
     parser.add_argument('-lr', action='store', default=0.001, type=np.float64)
     parser.add_argument('-gated', action='store_true', default=False)
+    parser.add_argument('-gf', '--gate_function', action='store', default='sigmoid',
+                        choices=['sigmoid', 'tanh', 'noisy_relu'])
     parser.add_argument('-v', '--verbose', action='store_true')
     exp_parameters = parser.parse_args()
 
@@ -122,7 +126,17 @@ if __name__ == '__main__':
 
     """ Directory specific to the environment and the method """
     if exp_parameters.gated:
-        environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'GatedActionDQN')
+        if exp_parameters.gate_function == 'sigmoid':
+            environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env,
+                                                        'SigmoidGatedActionDQN')
+        elif exp_parameters.gate_function == 'tanh':
+            environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env,
+                                                        'TanhGatedActionDQN')
+        elif exp_parameters.gate_function == 'noisy_relu':
+            environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env,
+                                                        'NoisyReLuGatedActionDQN')
+        else:
+            raise ValueError("Choose from the following gate functions: sigmoid, tanh")
     else:
         environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'ActionDQN')
     if not os.path.exists(environment_result_directory):
