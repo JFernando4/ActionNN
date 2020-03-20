@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from Experiment_Engine.networks import TwoLayerFullyConnected, ActionNeuralNetwork, weight_init, \
-    GatedActionNeuralNetwork, BatchNormActionNeuralNetwork
+    GatedActionNeuralNetwork, NormActionNeuralNetwork
 from Experiment_Engine.util import *
 
 
@@ -236,14 +236,14 @@ class ActionDQN(NeuralNetworkFunctionApproximation):
         self.target_net.eval()
 
 
-class BatchNormActionDQN(NeuralNetworkFunctionApproximation):
+class NormActionDQN(NeuralNetworkFunctionApproximation):
 
     def __init__(self, config, summary=None):
-        super(BatchNormActionDQN, self).__init__(config, summary)
+        super(NormActionDQN, self).__init__(config, summary)
 
         # policy network
-        self.net = BatchNormActionNeuralNetwork(config)
-        self.target_net = BatchNormActionNeuralNetwork(config)
+        self.net = NormActionNeuralNetwork(config)
+        self.target_net = NormActionNeuralNetwork(config)
 
         self.net.apply(weight_init)
         self.target_net.apply(weight_init)
