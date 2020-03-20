@@ -153,20 +153,23 @@ class GatedActionNeuralNetwork(nn.Module):
             return action_values
 
 
-class BatchNormActionNeuralNetwork(nn.Module):
+class NormActionNeuralNetwork(nn.Module):
 
     def __init__(self, config):
-        super(BatchNormActionNeuralNetwork, self).__init__()
+        super(NormActionNeuralNetwork, self).__init__()
         self.config = config
         # format: check_attribute( config_class, attribute_name, default_value, data_type)  # description (optional)
         input_dims = check_attribute(self.config, 'input_dims', 1, data_type=int)
         h1_dims = check_attribute(self.config, 'h1_dims', 1, data_type=int)  # neurons in hidden layer 1
         h2_dims = check_attribute(self.config, 'h2_dims', 1, data_type=int)  # neurons in hidden layer 2
         self.num_actions = check_attribute(self.config, 'num_actions', 1, data_type=int)
+        self.norm_type = check_attribute(self.config, 'norm_type', 'batch', choices=['batch', 'layer'])
 
         self.fc1 = nn.Linear(input_dims, h1_dims, bias=True)
         self.fc2 = nn.Linear(h1_dims, h2_dims, bias=True)
-        self.bn2 = nn.BatchNorm1d(h2_dims, affine=False)
+        if self.norm_type == 'batch':
+            self.bn2 = nn.BatchNorm1d(h2_dims, affine=False)
+        else: self.bn2 = None
         self.fc3 = nn.Linear(h2_dims, 1, bias=False)
 
         self.action_scales = nn.Parameter(torch.randn((self.num_actions, h2_dims)), requires_grad=True)
@@ -177,20 +180,39 @@ class BatchNormActionNeuralNetwork(nn.Module):
         z1 = self.fc1(x)            # Layer 1: z1 = W1^T x + b1
         x1 = F.relu(z1)             # Layer 1: x1 = gate1(z1)
         z2 = self.fc2(x1)           # Layer 2: z2 = W2^T x1 + b2
-        if not full:
+        if not full:                # forward pass for just one action
             assert a is not None
-            centered_z2 = self.bn2(z2)
+            if self.norm_type == 'batch':       # batch norm
+                assert self.bn2 is not None
+                centered_z2 = self.bn2(z2)
+            elif self.norm_type == 'layer':     # layer norm
+                assert self.bn2 is None
+                mean_z2 = z2.mean(dim=1, keepdim=True)
+                stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
+                centered_z2 = (z2 - mean_z2) / stddev_z2
+            else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
+
             affine_z2 = centered_z2 * self.action_scales[a] + self.action_shifts[a]
             x2 = F.relu(affine_z2)
             x3 = self.fc3(x2)  # Output Layer: x3 = W3^T x2
             if not return_activations:
                 return x3
             else:
-                return x1, x2, x3, g
-        else:
+                return x1, x2, x3
+        else:                       # forward pass for all the actions
             action_values = None
-            for i in range(self.num_actions):
+
+            if self.norm_type == 'batch':       # batch norm
+                assert self.bn2 is not None
                 centered_z2 = self.bn2(z2)
+            elif self.norm_type == 'layer':     # layer norm
+                assert self.bn2 is None
+                mean_z2 = z2.mean(dim=1, keepdim=True)
+                stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
+                centered_z2 = (z2 - mean_z2) / stddev_z2
+            else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
+
+            for i in range(self.num_actions):
                 affine_z2 = centered_z2 * self.action_scales[i] + self.action_shifts[i]
                 x2 = F.relu(affine_z2)
                 x3 = self.fc3(x2)
