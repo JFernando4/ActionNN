@@ -7,7 +7,7 @@ import time
 
 from Experiment_Engine.util import check_attribute, Config          # utilities
 from Experiment_Engine import MountainCar, PuddleWorld              # environments
-from Experiment_Engine import Agent, BatchNormActionDQN                      # agent and function approximator
+from Experiment_Engine import Agent, NormActionDQN                      # agent and function approximator
 
 ENVIRONMENT_DICTIONARY = {
     'mountain_car': {'class': MountainCar, 'state_dims': 2, 'num_actions': 3, 'number_of_steps': 200000,
@@ -23,12 +23,13 @@ class Experiment:
 
     def __init__(self, experiment_parameters, run_results_dir):
         self.run_results_dir = run_results_dir
-        self.tnet_update_Freq = check_attribute(experiment_parameters, 'tnet_update_freq', 1)
-        self.buffer_size = check_attribute(experiment_parameters, 'buffer_size', 10000)
-        self.learning_rate = check_attribute(exp_parameters, 'lr', 0.001)
-        self.environment_name = check_attribute(experiment_parameters, 'env', 'mountain_car',
+        self.tnet_update_Freq = check_attribute(experiment_parameters, 'tnet_update_freq', default_value=1)
+        self.buffer_size = check_attribute(experiment_parameters, 'buffer_size', default_value=10000)
+        self.learning_rate = check_attribute(exp_parameters, 'lr', default_value=0.001)
+        self.environment_name = check_attribute(experiment_parameters, 'env', default_value='mountain_car',
                                                 choices=['mountain_car', 'catcher', 'puddle_world'])
         self.verbose = experiment_parameters.verbose
+        self.norm_type = check_attribute(exp_parameters, 'norm_type', default_value='batch')
 
         self.config = Config()
         self.config.store_summary = True
@@ -55,9 +56,11 @@ class Experiment:
         self.config.buffer_size = self.buffer_size
         self.config.tnet_update_freq = self.tnet_update_Freq
         self.config.input_dims = self.config.state_dims
+        # norm type
+        self.config.norm_type = self.norm_type
 
         self.env = ENVIRONMENT_DICTIONARY[self.environment_name]['class'](config=self.config, summary=self.summary)
-        self.fa = BatchNormActionDQN(config=self.config, summary=self.summary)
+        self.fa = NormActionDQN(config=self.config, summary=self.summary)
         self.rl_agent = Agent(environment=self.env, function_approximator=self.fa, config=self.config,
                               summary=self.summary)
 
@@ -104,6 +107,8 @@ if __name__ == '__main__':
     parser.add_argument('-buffer_size', action='store', default=10000, type=np.int64)
     parser.add_argument('-lr', action='store', default=0.001, type=np.float64)
     parser.add_argument('-v', '--verbose', action='store_true')
+    parser.add_argument('-nt', '--norm_type', action='store', type=str, choices=['batch', 'layer'],
+                        default='batch')
     exp_parameters = parser.parse_args()
 
     """ General results directory """
@@ -112,8 +117,12 @@ if __name__ == '__main__':
         os.makedirs(results_parent_directory, exist_ok=True)
 
     """ Directory specific to the environment and the method """
+    if exp_parameters.norm_type == 'batch':     # batch norm
+        environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'BatchNormActionDQN')
+    elif exp_parameters.norm_type == 'layer':   # layer norm
+        environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'LayerNormActionDQN')
+    else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
 
-    environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'BatchNormActionDQN')
     if not os.path.exists(environment_result_directory):
         os.makedirs(environment_result_directory, exist_ok=True)
 
