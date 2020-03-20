@@ -182,16 +182,16 @@ class NormActionNeuralNetwork(nn.Module):
         z2 = self.fc2(x1)           # Layer 2: z2 = W2^T x1 + b2
         if not full:                # forward pass for just one action
             assert a is not None
-            if self.norm_type == 'batch':       # batch norm
-                assert self.bn2 is not None
-                centered_z2 = self.bn2(z2)
-            elif self.norm_type == 'layer':     # layer norm
-                assert self.bn2 is None
-                mean_z2 = z2.mean(dim=1, keepdim=True)
-                stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
-                centered_z2 = (z2 - mean_z2) / stddev_z2
-            else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
-
+            centered_z2 = self.center_preactivations(z2)
+            # if self.norm_type == 'batch':       # batch norm
+            #     assert self.bn2 is not None
+            #     centered_z2 = self.bn2(z2)
+            # elif self.norm_type == 'layer':     # layer norm
+            #     assert self.bn2 is None
+            #     mean_z2 = z2.mean(dim=1, keepdim=True)
+            #     stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
+            #     centered_z2 = (z2 - mean_z2) / stddev_z2
+            # else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
             affine_z2 = centered_z2 * self.action_scales[a] + self.action_shifts[a]
             x2 = F.relu(affine_z2)
             x3 = self.fc3(x2)  # Output Layer: x3 = W3^T x2
@@ -201,17 +201,16 @@ class NormActionNeuralNetwork(nn.Module):
                 return x1, x2, x3
         else:                       # forward pass for all the actions
             action_values = None
-
-            if self.norm_type == 'batch':       # batch norm
-                assert self.bn2 is not None
-                centered_z2 = self.bn2(z2)
-            elif self.norm_type == 'layer':     # layer norm
-                assert self.bn2 is None
-                mean_z2 = z2.mean(dim=1, keepdim=True)
-                stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
-                centered_z2 = (z2 - mean_z2) / stddev_z2
-            else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
-
+            centered_z2 = self.center_preactivations(z2)
+            # if self.norm_type == 'batch':       # batch norm
+            #     assert self.bn2 is not None
+            #     centered_z2 = self.bn2(z2)
+            # elif self.norm_type == 'layer':     # layer norm
+            #     assert self.bn2 is None
+            #     mean_z2 = z2.mean(dim=1, keepdim=True)
+            #     stddev_z2 = z2.std(dim=1, unbiased=True, keepdim=True)
+            #     centered_z2 = (z2 - mean_z2) / stddev_z2
+            # else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
             for i in range(self.num_actions):
                 affine_z2 = centered_z2 * self.action_scales[i] + self.action_shifts[i]
                 x2 = F.relu(affine_z2)
@@ -221,6 +220,19 @@ class NormActionNeuralNetwork(nn.Module):
                 else:
                     action_values = torch.cat((action_values, x3), dim=1)
             return action_values
+
+    def center_preactivations(self, preactivations):
+        # preactivations are assumed to have shape batch_size x hidden_units
+        if self.norm_type == 'batch':
+            assert self.bn2 is not None
+            centered_preactivations = self.bn2(preactivations)
+        elif self.norm_type == 'layer':
+            assert self.bn2 is None
+            mean_preactivations = preactivations.mean(dim=1, keepdim=True)
+            stddev_preactivations = preactivations.std(dim=1, unbiased=True, keepdim=True)
+            centered_preactivations = (preactivations - mean_preactivations) / stddev_preactivations
+        else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
+        return centered_preactivations
 
 
 def to_variable(x):
