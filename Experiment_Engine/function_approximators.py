@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 from Experiment_Engine.networks import TwoLayerFullyConnected, ActionNeuralNetwork, weight_init, \
-    GatedActionNeuralNetwork, NormActionNeuralNetwork
+    GatedActionNeuralNetwork, NormActionNeuralNetwork, NormNeuralNetwork
 from Experiment_Engine.util import *
 
 
@@ -72,9 +72,12 @@ class NeuralNetworkFunctionApproximation:
     def choose_action(self, state):
         p = np.random.rand()
         if p > self.epsilon:
+            self.net.eval()
             with torch.no_grad():
                 # it is extremely unlikely (prob = 0) for there to be two actions with exactly the same action value
+                state = state.reshape([1, self.state_dims])
                 optim_action = self.net.forward(state).argmax().numpy()
+            self.net.train()
             return np.int64(optim_action)
         else:
             return np.random.randint(self.num_actions)
@@ -175,6 +178,21 @@ class VanillaDQN(NeuralNetworkFunctionApproximation):
 
         self.save_summary(loss.detach().numpy())
         self.update_target_network()
+
+
+class NormDQN(VanillaDQN):
+
+    def __init__(self, config, summary=None):
+        super(NormDQN, self).__init__(config, summary)
+        # policy network
+        self.net = NormNeuralNetwork(self.config)
+        self.net.apply(weight_init)
+        # target network
+        self.target_net = NormNeuralNetwork(self.config)
+        self.target_net.apply(weight_init)
+        self.target_net.eval()
+
+        self.optimizer = torch.optim.Adam(self.net.parameters(), lr=self.lr)
 
 
 class ActionDQN(NeuralNetworkFunctionApproximation):
