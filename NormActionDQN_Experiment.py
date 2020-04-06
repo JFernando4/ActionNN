@@ -5,9 +5,9 @@ import torch
 import pickle
 import time
 
-from Experiment_Engine.util import check_attribute, Config          # utilities
-from Experiment_Engine import MountainCar, PuddleWorld              # environments
-from Experiment_Engine import Agent, NormActionDQN                      # agent and function approximator
+from Experiment_Engine.util import check_attribute, Config              # utilities
+from Experiment_Engine import MountainCar, PuddleWorld                  # environments
+from Experiment_Engine import Agent, NormActionDQN, NormDQN             # agent and function approximator
 
 ENVIRONMENT_DICTIONARY = {
     'mountain_car': {'class': MountainCar, 'state_dims': 2, 'num_actions': 3, 'number_of_steps': 200000,
@@ -30,6 +30,8 @@ class Experiment:
                                                 choices=['mountain_car', 'catcher', 'puddle_world'])
         self.verbose = experiment_parameters.verbose
         self.norm_type = check_attribute(exp_parameters, 'norm_type', default_value='batch')
+        self.omit_action_scaling_and_shifting = check_attribute(exp_parameters, 'omit_action_scaling_and_shifting',
+                                                                default_value=False)
 
         self.config = Config()
         self.config.store_summary = True
@@ -60,7 +62,10 @@ class Experiment:
         self.config.norm_type = self.norm_type
 
         self.env = ENVIRONMENT_DICTIONARY[self.environment_name]['class'](config=self.config, summary=self.summary)
-        self.fa = NormActionDQN(config=self.config, summary=self.summary)
+        if self.omit_action_scaling_and_shifting:
+            self.fa = NormDQN(config=self.config, summary=self.summary)
+        else:
+            self.fa = NormActionDQN(config=self.config, summary=self.summary)
         self.rl_agent = Agent(environment=self.env, function_approximator=self.fa, config=self.config,
                               summary=self.summary)
 
@@ -109,6 +114,7 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true')
     parser.add_argument('-nt', '--norm_type', action='store', type=str, choices=['batch', 'layer'],
                         default='batch')
+    parser.add_argument('-oass', '--omit_action_scaling_and_shifting', action='store_true', default=False)
     exp_parameters = parser.parse_args()
 
     """ General results directory """
@@ -117,11 +123,19 @@ if __name__ == '__main__':
         os.makedirs(results_parent_directory, exist_ok=True)
 
     """ Directory specific to the environment and the method """
+    method_name = ''
     if exp_parameters.norm_type == 'batch':     # batch norm
-        environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'BatchNormActionDQN')
+        method_name += 'BatchNorm'
     elif exp_parameters.norm_type == 'layer':   # layer norm
-        environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, 'LayerNormActionDQN')
+        method_name += 'LayerNorm'
     else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
+
+    if exp_parameters.omit_action_scaling_and_shifting:
+        method_name += 'DQN'
+    else:
+        method_name += 'ActionDQN'
+
+    environment_result_directory = os.path.join(results_parent_directory, exp_parameters.env, method_name)
 
     if not os.path.exists(environment_result_directory):
         os.makedirs(environment_result_directory, exist_ok=True)
