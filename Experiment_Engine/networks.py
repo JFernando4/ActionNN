@@ -235,6 +235,56 @@ class NormActionNeuralNetwork(nn.Module):
         return centered_preactivations
 
 
+class NormNeuralNetwork(nn.Module):
+
+    def __init__(self, config):
+        super(NormNeuralNetwork, self).__init__()
+        self.config = config
+        # format: check_attribute( config_class, attribute_name, default_value, data_type)  # description (optional)
+        input_dims = check_attribute(self.config, 'input_dims', 1, data_type=int)
+        h1_dims = check_attribute(self.config, 'h1_dims', 1, data_type=int)  # neurons in hidden layer 1
+        h2_dims = check_attribute(self.config, 'h2_dims', 1, data_type=int)  # neurons in hidden layer 2
+        self.num_actions = check_attribute(self.config, 'num_actions', 1, data_type=int)
+        self.norm_type = check_attribute(self.config, 'norm_type', 'batch', choices=['batch', 'layer'])
+
+        self.fc1 = nn.Linear(input_dims, h1_dims, bias=True)
+        self.fc2 = nn.Linear(h1_dims, h2_dims, bias=True)
+        if self.norm_type == 'batch':
+            self.bn2 = nn.BatchNorm1d(h2_dims, affine=False)
+        else: self.bn2 = None
+        self.fc3 = nn.Linear(h2_dims, self.num_actions, bias=False)
+
+        self.action_scales = nn.Parameter(torch.randn(h2_dims), requires_grad=True)
+        self.action_shifts = nn.Parameter(torch.randn(h2_dims), requires_grad=True)
+
+    def forward(self, x, return_activations=False):
+        x = to_variable(x)
+        z1 = self.fc1(x)            # Layer 1: z1 = W1^T x + b1
+        x1 = F.relu(z1)             # Layer 1: x1 = gate1(z1)
+        z2 = self.fc2(x1)           # Layer 2: z2 = W2^T x1 + b2
+        centered_z2 = self.center_preactivations(z2)
+        affine_z2 = centered_z2 * self.action_scales + self.action_shifts
+        x2 = F.relu(affine_z2)
+        x3 = self.fc3(x2)  # Output Layer: x3 = W3^T x2
+        if not return_activations:
+            return x3
+        else:
+            return x1, x2, x3
+
+    def center_preactivations(self, preactivations):
+        # preactivations are assumed to have shape batch_size x hidden_units
+        if self.norm_type == 'batch':
+            assert self.bn2 is not None
+            centered_preactivations = self.bn2(preactivations)
+        elif self.norm_type == 'layer':
+            assert self.bn2 is None
+            mean_preactivations = preactivations.mean(dim=1, keepdim=True)
+            stddev_preactivations = preactivations.std(dim=1, unbiased=True, keepdim=True)
+            centered_preactivations = (preactivations - mean_preactivations) / stddev_preactivations
+        else: raise ValueError("Only two types of normalization available: 'batch' or 'layer'.")
+        return centered_preactivations
+
+
 def to_variable(x):
     if isinstance(x, torch.autograd.Variable):
         return x
