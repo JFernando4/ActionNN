@@ -10,7 +10,7 @@ class MountainCar:
     Observation Dtype = np.float64
     Reward = -1 at every step
 
-    Summary Name: steps_per_episode, reward_per_step
+    Summary Name: steps_per_episode
 
     Note: In this case, the maximum number of steps parameter indicates the maximum over the whole training period, not
           just per episode as in mountain car.
@@ -43,7 +43,6 @@ class MountainCar:
             assert isinstance(self.summary, dict)
             self.reward_per_step = np.zeros(self.number_of_steps, dtype=np.float64)
             check_dict_else_default(self.summary, "steps_per_episode", [])
-            check_dict_else_default(self.summary, "reward_per_step", self.reward_per_step)
 
         # internal state of the environment
         self.episode_step_count = 0
