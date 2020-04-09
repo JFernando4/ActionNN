@@ -145,6 +145,7 @@ if __name__ == '__main__':
 # learning rate = {0.01, 0.004, 0.001, 0.00025} for mountain car
 
 # catcher
-# learning rate = {0.001, 0.0005, 0.00025, 0.000125, 0.0000625, 0.00003125, 0.000015625} for catcher
-# buffer_size = {1k, 5k, 20k, 100k, 200k, 400k}
-# target network update frequency = {10, 50, 100, 200, 400, 800, 1000, 2000}
+# learning rate = {0.001, 0.0005, 0.00025, 0.000125, 0.0000625, 0.00003125} for catcher
+# buffer_size = {5k, 20k, 100k, 200k, 400k}
+# target network update frequency = {10, 50, 100, 200, 400, 800, 1600}
+# best parameter combination for dqn = {buffer size = 400k, freq = 200, lr = 0.0005}
