@@ -73,7 +73,7 @@ def compute_welchs_test(mean1, std1, sample_size1, mean2, std2, sample_size2):
         dof = dof_numerator / dof_denominator
 
         t_dist = t(df=dof)  # from scipy.stats
-        p_value = t_dist.pdf(tvalue)
+        p_value = t_dist.cdf(tvalue)
     return tvalue, p_value
 
 
