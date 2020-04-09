@@ -6,14 +6,14 @@ import pickle
 import time
 
 from Experiment_Engine.util import check_attribute, Config              # utilities
-from Experiment_Engine import MountainCar, PuddleWorld                  # environments
+from Experiment_Engine import MountainCar, PuddleWorld, Catcher3        # environments
 from Experiment_Engine import Agent, NormActionDQN, NormDQN             # agent and function approximator
 
 ENVIRONMENT_DICTIONARY = {
     'mountain_car': {'class': MountainCar, 'state_dims': 2, 'num_actions': 3, 'number_of_steps': 200000,
                      'max_episode_length': 200000},
-    # 'catcher': {'class': Catcher3, 'state_dims': 4, 'num_actions': 3, 'number_of_steps': 500000,
-    #             'max_episode_length': 500000},
+    'catcher': {'class': Catcher3, 'state_dims': 4, 'num_actions': 3, 'number_of_steps': 500000,
+                'max_episode_length': 500000},
     'puddle_world': {'class': PuddleWorld, 'state_dims': 2, 'num_actions': 4, 'number_of_steps': 200000,
                      'max_episode_length': 200000}
 }
@@ -164,7 +164,7 @@ if __name__ == '__main__':
 
 # Parameter Sweep:
 # learning rate = {0.01, 0.004, 0.001, 0.00025} for mountain car
-# learning rate = {0.001, 0.0005, 0.00025, 0.000125, 0.0000625, 0.00003125, 0.000015625} for catcher
+# learning rate = {0.001, 0.0005, 0.00025, 0.000125, 0.0000625, 0.00003125} for catcher
 # buffer size = {100, 1k, 5k, 20k, 80k}
 # target network update frequency = {10, 50, 100, 200, 400}
     # We tested a frequency of 1 but in most runs learning was very brittle. In the few runs where the network
